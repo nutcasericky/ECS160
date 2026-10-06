@@ -1,4 +1,5 @@
 mod ast;
+mod evaluator;
 
 use ast::{add, div, mult, num, sub, Expr};
 

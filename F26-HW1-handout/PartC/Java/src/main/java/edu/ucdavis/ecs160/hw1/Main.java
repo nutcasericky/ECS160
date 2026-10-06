@@ -52,7 +52,7 @@ public class Main {
     }
 
     private static void check(Expr expr, int expected) {
-        int actual; // FILL THIS!
+        int actual = expr.accept(new Evaluator());
         testNumber++;
         System.out.println("Test " + testNumber + " = " + actual);
         assert actual == expected : "Test " + testNumber + ": expected " + expected + ", got " + actual;
