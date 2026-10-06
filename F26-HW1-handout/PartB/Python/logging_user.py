@@ -18,6 +18,5 @@ class LoggingUser(User):
         return self._delegate.get_email()
 
     def set_email(self, email):
-        argument = json.dumps(email)
-        print(f"[LOG] {type(self._delegate).__name__}.set_email({argument})")
+        print(f"[LOG] {type(self._delegate).__name__}.set_email()")
         return self._delegate.set_email(email)

@@ -23,13 +23,8 @@ public class LoggingUser implements User {
 
     @Override
     public void setEmail(String email) {
-        String argument = email == null ? "null" : "\"" + email
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r") + "\"";
         System.out.println("[LOG] " + delegate.getClass().getSimpleName()
-                + ".setEmail(" + argument + ")");
+                + ".setEmail()");
         delegate.setEmail(email);
     }
 }
