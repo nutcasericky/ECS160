@@ -79,7 +79,53 @@ public class SQLiteDB {
      * Check the handout for more details.
      */
     public void insertRow(Object obj) throws SQLException, IllegalAccessException {
-       
+        Class<?> clazz = obj.getClass();
+        List<Field> fields = new ArrayList<>();
+
+        //add @Persistable fields into the list
+        for(Field field: clazz.getDeclaredFields()){
+            if(field.isAnnotationPresent(Persistable.class)){
+                field.setAccessible(true);
+                fields.add(field);
+            }
+        }
+
+        //build columns
+        StringBuilder columns = new StringBuilder();
+        StringBuilder placeholders = new StringBuilder();
+
+        for(int i = 0;i < fields.size();i++){
+            if(i > 0){
+                columns.append(", ");
+                placeholders.append(", ");
+            }
+
+            columns.append(dbHelper.camelToSnakeCase(fields.get(i).getName()));
+            placeholders.append("?");
+        }
+
+        String sql = "INSERT INTO " + clazz.getSimpleName() + " (" + columns + 
+        ") VALUES (" + placeholders + ")";
+
+        //bind values
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+        for (int i = 0; i < fields.size(); i++) {
+            Field field = fields.get(i);
+            int position = i + 1;
+
+            if (field.getType() == String.class) {
+                pstmt.setString(position, (String) field.get(obj));
+            } else if (field.getType() == int.class) {
+                pstmt.setInt(position, field.getInt(obj));
+            } else if (field.getType() == byte[].class) {
+                pstmt.setBytes(position, (byte[]) field.get(obj));
+            }
+        }
+
+        pstmt.executeUpdate();
+    }
+
+
     }
 
     /**
