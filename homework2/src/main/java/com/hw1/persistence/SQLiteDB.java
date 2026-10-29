@@ -1,4 +1,4 @@
-package com.hw1.persistence;
+ package com.hw1.persistence;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -136,9 +136,130 @@ public class SQLiteDB {
      * Check the handout for more details. 
      * 
      */
+    @SuppressWarnings("unchecked")
     public <T> T loadRow(T obj) throws SQLException, IllegalAccessException {
-        // Return null if no row was found
-        return null;
+        Class<?> clazz = obj.getClass();
+        List<Field> persistableFields = new ArrayList<>();
+        List<Field> lazyFields = new ArrayList<>();
+        Field primaryKey = null;
+
+        // Find the fields to load and the primary key.
+        for (Field field : clazz.getDeclaredFields()) {
+            if (field.isAnnotationPresent(Persistable.class)) {
+                field.setAccessible(true);
+                persistableFields.add(field);
+
+                if (field.isAnnotationPresent(PrimaryKey.class)) {
+                    primaryKey = field;
+                }
+
+                if (field.isAnnotationPresent(RemoteLazyLoad.class)) {
+                    lazyFields.add(field);
+                }
+            }
+        }
+
+        if (primaryKey == null) {
+            throw new SQLException("No primary key field found");
+        }
+
+        String keyColumn = dbHelper.camelToSnakeCase(primaryKey.getName());
+        String sql = "SELECT * FROM " + clazz.getSimpleName()
+                + " WHERE " + keyColumn + " = ?";
+
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            // Bind the primary key's value.
+            if (primaryKey.getType() == String.class) {
+                pstmt.setString(1, (String) primaryKey.get(obj));
+            } else if (primaryKey.getType() == int.class) {
+                pstmt.setInt(1, primaryKey.getInt(obj));
+            } else if (primaryKey.getType() == byte[].class) {
+                pstmt.setBytes(1, (byte[]) primaryKey.get(obj));
+            }
+
+            try (ResultSet rs = pstmt.executeQuery()) {
+                if (!rs.next()) {
+                    System.out.println(
+                            "No row found for primary key: " + primaryKey.get(obj));
+                    System.exit(0);
+                    return null;
+                }
+
+                T result = obj;
+
+                if (!lazyFields.isEmpty()) {
+                    ProxyFactory factory = new ProxyFactory();
+                    factory.setSuperclass(clazz);
+
+                    MethodHandler handler = (self, method, proceed, args) -> {
+                        for (Field field : lazyFields) {
+                            String fieldName = field.getName();
+                            String getterName = "get"
+                                    + Character.toUpperCase(fieldName.charAt(0))
+                                    + fieldName.substring(1);
+
+                            if (method.getName().equals(getterName)
+                                    && method.getParameterCount() == 0) {
+                                byte[] value = (byte[]) field.get(self);
+
+                                if (value != null) {
+                                    String possibleUrl = new String(
+                                            value,
+                                            java.nio.charset.StandardCharsets.UTF_8);
+
+                                    if (possibleUrl.startsWith("http://")
+                                            || possibleUrl.startsWith("https://")) {
+                                        byte[] content =
+                                                dbHelper.fetchContentFromUrl(possibleUrl);
+
+                                        // Replace the URL with downloaded bytes.
+                                        field.set(self, content);
+                                    }
+                                }
+
+                                break;
+                            }
+                        }
+
+                        // Invoke the original implementation of the method.
+                        return proceed.invoke(self, args);
+                    };
+
+                    try {
+                        result = (T) factory.create(
+                                new Class<?>[0],
+                                new Object[0],
+                                handler);
+                    } catch (ReflectiveOperationException e) {
+                        throw new SQLException(
+                                "Could not create lazy-loading proxy", e);
+                    }
+                }
+
+                // Populate the supplied object.
+                // When using a proxy, populate its fields as well.
+                for (Field field : persistableFields) {
+                    String column = dbHelper.camelToSnakeCase(field.getName());
+                    Object value;
+
+                    if (field.getType() == String.class) {
+                        value = rs.getString(column);
+                    } else if (field.getType() == int.class) {
+                        value = rs.getInt(column);
+                    } else {
+                        value = rs.getBytes(column);
+                    }
+
+                    field.set(obj, value);
+
+                    if (result != obj) {
+                        field.set(result, value);
+                    }
+                }
+
+                return result;
+            }
+        }
     }
     
     
